@@ -92,6 +92,7 @@ config/
   - This file contains the configuration for the User Database, of assigned Voices(SpeechConfigs).
   - You can change the voice for a specific user.
   - The default voice is constructed from `config/UserSpeechTemplate_config.toml` file.
+  * Voices are persisted among restarts.
 
 ---
 
@@ -100,6 +101,8 @@ config/
   - You can change the template for the user speech.
     - Commenting out `locale`, `gender`, randomizes the voice.
     - You can also change the `pitch`, `rate`, and `volume` for the user speech.
+  * If you change this template, only the new users will be affected by the changes.
+  * you chan delete the `UserDatabase_config.toml` file to apply the changes to all users new users.
 
 ```toml
     locale = "it-IT"

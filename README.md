@@ -43,12 +43,16 @@ all configuration files will be created in `config/` directory.
 3. Config Files:
 
 -- Config Files are automatically created in the `config/` directory on the first run of the application.
+
+```
 config/
-├── BotVoice_config.toml
-├── TwitchClient_config.toml
-├── UserDatabase_config.toml
-└── UserSpeechTemplate_config.toml
-└── MSVoice_config.toml
+
+  ├── BotVoice_config.toml
+  ├── TwitchClient_config.toml
+  ├── UserDatabase_config.toml
+  ├── UserSpeechTemplate_config.toml
+  └── MSVoice_config.toml
+```
 
 ---
 

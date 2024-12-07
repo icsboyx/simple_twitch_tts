@@ -42,7 +42,7 @@ all configuration files will be created in `config/` directory.
 
 3. Config Files:
 
--- Config Files are automatically created in the `config/` directory on the first run of the application.
+- Config Files are automatically created in the `config/` directory on the first run of the application.
 
 ```
 config/

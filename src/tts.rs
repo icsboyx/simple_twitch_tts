@@ -179,23 +179,18 @@ pub async fn start(args: Args) -> Result<()> {
     println!("[DEBUG] Starting TTS Module");
     let mut my_receiver = args.com_bus.subscribe::<TTSMessage>("TTS").await;
 
-    loop {
-        tokio::select! {
-
-                ret_val = my_receiver.recv() => {
-                    if ret_val.is_none() {
-                        continue;
-                    }
-                    let ret_val = ret_val.unwrap();
-                    let mut tts = connect_async().await?;
-                    let audio = tts.synthesize(&ret_val.message, &ret_val.user_speech_config).await?;
-                    let tts_audio_message = TTSAudioMessage {
-                        timestamp:  ret_val.timestamp,
-                        audio: audio.audio_bytes,
-                    };
-                    drop(tts);
-                    args.com_bus.send("TTS_PLAYER", tts_audio_message).await?;
-                }
-        }
+    while let Some(ret_val) = my_receiver.recv().await {
+        let mut tts = connect_async().await?;
+        let audio = tts
+            .synthesize(&ret_val.message, &ret_val.user_speech_config)
+            .await?;
+        let tts_audio_message = TTSAudioMessage {
+            timestamp: ret_val.timestamp,
+            audio: audio.audio_bytes,
+        };
+        drop(tts);
+        args.com_bus.send("TTS_PLAYER", tts_audio_message).await?;
     }
+
+    Ok(())
 }

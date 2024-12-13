@@ -125,25 +125,21 @@ pub async fn start(args: Args) -> Result<()> {
         .await
         .unwrap();
 
-    loop {
-        tokio::select! {
+    while let Some(ret_val) = my_receiver.recv().await {
+        let user = ret_val.context.sender;
+        let timestamp = ret_val.timestamp;
+        let message = &ret_val.payload;
 
-            ret_val = my_receiver.recv() => {
-                if ret_val.is_none() {
-                    continue;
-                }
-                let ret_val = ret_val.unwrap();
-                let user = ret_val.context.sender;
-                let timestamp = ret_val.timestamp;
-                let message = &ret_val.payload;
-
-                let user_tts_speech_config = if let Some(user_speech_config) = user_db.get_speech_config(&user) {
-                    user_speech_config
+        let user_tts_speech_config =
+            if let Some(user_speech_config) = user_db.get_speech_config(&user) {
+                user_speech_config
+            } else {
+                if user == args.bot_info.get_name().await {
+                    bot_voice.speech_config.clone()
                 } else {
-                    if user == args.bot_info.get_name().await {
-                        bot_voice.speech_config.clone()
-                    } else {
-                    let mut user_speech_config = user_db.create_speech_config(user_template_voices.clone()).unwrap();
+                    let mut user_speech_config = user_db
+                        .create_speech_config(user_template_voices.clone())
+                        .unwrap();
                     user_db.add_user(user, user_speech_config.clone());
                     UserDatabase::save_config::<UserDatabase>(&user_db).await?;
                     if user_template_voices.pitch.is_some() {
@@ -155,19 +151,21 @@ pub async fn start(args: Args) -> Result<()> {
                     if user_template_voices.volume.is_some() {
                         user_speech_config.volume = user_template_voices.volume.unwrap();
                     }
-                    user_speech_config}
-                };
+                    user_speech_config
+                }
+            };
 
-
-
-
-                args.com_bus.send("TTS", TTSMessage {
+        args.com_bus
+            .send(
+                "TTS",
+                TTSMessage {
                     timestamp,
                     message: message.clone(),
                     user_speech_config: user_tts_speech_config,
-                }).await?;
-            }
-        }
+                },
+            )
+            .await?;
     }
-    // Ok(())
+
+    Ok(())
 }

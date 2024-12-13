@@ -82,10 +82,10 @@ async fn main() {
         bot_info,
     };
 
-    let mut manager = TaskManager::new();
-    manager.add_task("TWITCH", twitch_client::start(args.clone()));
-    manager.add_task("TTS", tts::start(args.clone()));
-    manager.add_task("TTS_PLAYER", tts_player::start(args.clone()));
-    manager.add_task("USERS", users_manager::start(args.clone()));
-    manager.run().await;
+    let mut task_manager = TaskManager::new();
+    task_manager.add_task("TWITCH", twitch_client::start(args.clone()));
+    task_manager.add_task("TTS", tts::start(args.clone()));
+    task_manager.add_task("TTS_PLAYER", tts_player::start(args.clone()));
+    task_manager.add_task("USERS", users_manager::start(args.clone()));
+    task_manager.run().await;
 }

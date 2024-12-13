@@ -4,8 +4,11 @@ This project is a simple Text-to-Speech (TTS) application for Twitch streams, wr
 
 ## Features
 
+- Text-to-Speech (TTS) for Twitch chat
 - Convert chat messages to speech
 - Easy integration with Twitch API
+- Real-time chat interaction
+- Built with asynchronous Rust programming
 - Customizable voice settings
 
 ## Installation
@@ -129,6 +132,23 @@ config/
 ```
 
 ---
+
+## Tags
+
+- Rust
+- Twitch
+- Text-to-Speech
+- TTS
+- Chatbot
+- Streaming
+- Open Source
+- Bot Development
+- Twitch API
+- Audio Processing
+- Real-time Applications
+- Asynchronous
+- Speech Synthesis
+- MIT License
 
 ## Contributing
 

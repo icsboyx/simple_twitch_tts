@@ -10,7 +10,7 @@ static FILE_SUFFIX: &str = "_config";
 static FILE_EXTENSION: &str = ".toml";
 
 pub trait ConfigManager {
-    async fn load_config<T>(default_config: impl Serialize + Debug) -> Result<T>
+    fn load_config<T>(default_config: impl Serialize + Debug) -> Result<T>
     where
         T: for<'a> Deserialize<'a> + Serialize + Default + Debug,
     {
@@ -49,7 +49,7 @@ pub trait ConfigManager {
                     config_file_name.to_string_lossy()
                 );
                 {
-                    Self::save_config::<T>(&default_config).await?;
+                    Self::save_config::<T>(&default_config)?;
                 }
                 Ok(serde_json::from_value(serde_json::to_value(
                     default_config,
@@ -57,7 +57,7 @@ pub trait ConfigManager {
             }
         }
     }
-    async fn save_config<T>(config: impl Serialize) -> Result<()> {
+    fn save_config<T>(config: impl Serialize) -> Result<()> {
         let config_toml = toml::to_string(&config)?;
 
         let config_file_name = type_name::<T>().rsplit("::").next().unwrap().to_string()

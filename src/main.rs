@@ -1,16 +1,19 @@
 #![allow(dead_code)]
-use com::CommBus;
+use com::MsgChannel;
 use futures::stream::FuturesUnordered;
+use irc_parser::IrcMessage;
 use std::sync::Arc;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_stream::StreamExt;
+
+mod audio_player;
 mod colors;
 mod com;
+mod commands;
 mod config_manager;
 mod irc_parser;
 mod macros;
 mod tts;
-mod tts_player;
 mod twitch_client;
 mod users_manager;
 
@@ -69,8 +72,8 @@ impl TaskManager {
 
 #[derive(Debug, Clone)]
 struct Args {
+    twitch_msg: MsgChannel<IrcMessage, String>,
     bot_info: BOTInfo,
-    com_bus: CommBus,
 }
 
 #[tokio::main]
@@ -78,14 +81,14 @@ async fn main() {
     let bot_info = BOTInfo::default();
 
     let args = Args {
-        com_bus: CommBus::new(),
+        twitch_msg: MsgChannel::new("TWITCH".to_string(), 10),
         bot_info,
     };
 
     let mut task_manager = TaskManager::new();
     task_manager.add_task("TWITCH", twitch_client::start(args.clone()));
     task_manager.add_task("TTS", tts::start(args.clone()));
-    task_manager.add_task("TTS_PLAYER", tts_player::start(args.clone()));
-    task_manager.add_task("USERS", users_manager::start(args.clone()));
+    task_manager.add_task("TTS_PLAYER", audio_player::start(args.clone()));
+    task_manager.add_task("COMMANDS", commands::start(args.clone()));
     task_manager.run().await;
 }

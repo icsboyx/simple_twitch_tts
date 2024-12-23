@@ -7,11 +7,15 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'aibx'",
+      "name": "Debug executable 'simple_twitch_tts'",
       "cargo": {
-        "args": ["build", "--bin=aibx", "--package=aibx"],
+        "args": [
+          "build",
+          "--bin=simple_twitch_tts",
+          "--package=simple_twitch_tts"
+        ],
         "filter": {
-          "name": "aibx",
+          "name": "simple_twitch_tts",
           "kind": "bin"
         }
       },
@@ -21,11 +25,16 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'aibx'",
+      "name": "Debug unit tests in executable 'simple_twitch_tts'",
       "cargo": {
-        "args": ["test", "--no-run", "--bin=aibx", "--package=aibx"],
+        "args": [
+          "test",
+          "--no-run",
+          "--bin=simple_twitch_tts",
+          "--package=simple_twitch_tts"
+        ],
         "filter": {
-          "name": "aibx",
+          "name": "simple_twitch_tts",
           "kind": "bin"
         }
       },

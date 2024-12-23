@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 use crate::{
-    colors::Colorize, config_manager::ConfigManager, tts_player::TTSAudioMessage, Args,
+    audio_player::TTS_QUEUE, colors::Colorize, commands::COMMAND_PREFIX,
+    config_manager::ConfigManager, twitch_client::TWITCH_MSG, users_manager::USER_DB, Args,
     WarningPrint,
 };
 
@@ -174,23 +175,36 @@ impl MSVoice {
 
 impl ConfigManager for MSVoice {}
 
-pub async fn start(args: Args) -> Result<()> {
-    let _voices = MSVoice::load_config::<MSVoice>(MSVoice::new()).await?;
-    println!("[DEBUG] Starting TTS Module");
-    let mut my_receiver = args.com_bus.subscribe::<TTSMessage>("TTS").await;
+pub async fn start(_args: Args) -> Result<()> {
+    let mut test_broadcast_rx = TWITCH_MSG.subscribe_broadcast().await;
 
-    while let Some(ret_val) = my_receiver.recv().await {
-        let mut tts = connect_async().await?;
-        let audio = tts
-            .synthesize(&ret_val.message, &ret_val.user_speech_config)
-            .await?;
-        let tts_audio_message = TTSAudioMessage {
-            timestamp: ret_val.timestamp,
-            audio: audio.audio_bytes,
+    while let Ok(ret_val) = test_broadcast_rx.recv().await {
+        match ret_val.context.command.as_str() {
+            "PRIVMSG" if !&ret_val.payload.starts_with(COMMAND_PREFIX) => {
+                let username = ret_val.context.sender;
+                let user_speech_config =
+                    USER_DB.write().await.get_speech_config(&username).unwrap();
+                let mut tts = connect_async().await?;
+                let audio = tts
+                    .synthesize(&ret_val.payload, &user_speech_config)
+                    .await?;
+                TTS_QUEUE.push_back(audio.audio_bytes).await;
+            }
+            _ => {}
         };
-        drop(tts);
-        args.com_bus.send("TTS_PLAYER", tts_audio_message).await?;
     }
+    // while let Some(ret_val) = my_receiver.recv().await {
+    //     let mut tts = connect_async().await?;
+    //     let audio = tts
+    //         .synthesize(&ret_val.message, &ret_val.user_speech_config)
+    //         .await?;
+    //     let tts_audio_message = TTSAudioMessage {
+    //         timestamp: ret_val.timestamp,
+    //         audio: audio.audio_bytes,
+    //     };
+    //     drop(tts);
+    //     args.com_bus.send("TTS_PLAYER", tts_audio_message).await?;
+    // }
 
     Ok(())
 }

@@ -25,7 +25,11 @@ tokio = { version = "1.41.1", features = [
   "tokio-macros",
   "tracing",
 ] }
-tokio-stream = "0.1.16"
+tokio-stream = "0.1.17"
 tokio-tungstenite = { version = "0.23.1", features = ["native-tls"] }
 toml = "0.8.19"
 uuid = { version = "1.11.0", features = ["v4"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+pulse = { package = "libpulse-binding", version = "2.0" }
+psimple = { package = "libpulse-simple-binding", version = "2.0" }

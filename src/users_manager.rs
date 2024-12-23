@@ -1,15 +1,22 @@
-use anyhow::Result;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
+use tokio::sync::RwLock;
 
 use msedge_tts::tts::SpeechConfig;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     config_manager::ConfigManager,
-    irc_parser::IrcMessage,
-    tts::{TTSGender, TTSMessage, TTS_VOICE_DATABASE},
-    Args,
+    tts::{TTSGender, TTS_VOICE_DATABASE},
 };
+
+pub static USER_DB: LazyLock<RwLock<UserDatabase>> =
+    LazyLock::new(|| RwLock::new(UserDatabase::load_config(UserDatabase::default()).unwrap()));
+
+pub static BOT_VOICE: LazyLock<BotVoice> =
+    LazyLock::new(|| BotVoice::load_config(BotVoice::default()).unwrap());
+
+pub static USER_TEMPLATE_VOICES: LazyLock<UserSpeechTemplate> =
+    LazyLock::new(|| UserSpeechTemplate::load_config(UserSpeechTemplate::default()).unwrap());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSpeechTemplate {
@@ -76,13 +83,20 @@ pub struct UserDatabase {
 }
 
 impl UserDatabase {
-    pub fn get_speech_config(&self, nickname: &str) -> Option<SpeechConfig> {
-        self.users.get(nickname).cloned()
+    pub fn get_speech_config(&mut self, nickname: &str) -> Option<SpeechConfig> {
+        if let Some(speech_config) = self.users.get(nickname) {
+            return Some(speech_config.clone());
+        } else {
+            let speech_config = self.create_speech_config(&USER_TEMPLATE_VOICES);
+            self.add_user(nickname, speech_config.clone()?);
+            UserDatabase::save_config::<UserDatabase>(self).unwrap();
+            return speech_config;
+        }
     }
 
     pub fn create_speech_config(
         &self,
-        user_speech_template: UserSpeechTemplate,
+        user_speech_template: &UserSpeechTemplate,
     ) -> Option<SpeechConfig> {
         let mut speech_config = TTS_VOICE_DATABASE
             .filter_locale(&user_speech_template.locale)
@@ -103,69 +117,4 @@ impl UserDatabase {
     pub fn add_user(&mut self, nickname: impl Into<String>, speech_config: SpeechConfig) {
         self.users.insert(nickname.into(), speech_config);
     }
-}
-
-pub async fn start(args: Args) -> Result<()> {
-    // Let get our communication queue
-    let mut my_receiver = args.com_bus.subscribe::<IrcMessage>("USERS").await;
-
-    // Load user database configuration or use default values and write to config file
-    let mut user_db = UserDatabase::load_config::<UserDatabase>(UserDatabase::default())
-        .await
-        .unwrap();
-
-    // Load user template voices configuration or use default values and write to config file
-    let user_template_voices =
-        UserSpeechTemplate::load_config::<UserSpeechTemplate>(UserSpeechTemplate::default())
-            .await
-            .unwrap();
-
-    // Load bot voice configuration or use default values and write to config file
-    let bot_voice = BotVoice::load_config::<BotVoice>(BotVoice::default())
-        .await
-        .unwrap();
-
-    while let Some(ret_val) = my_receiver.recv().await {
-        let user = ret_val.context.sender;
-        let timestamp = ret_val.timestamp;
-        let message = &ret_val.payload;
-
-        let user_tts_speech_config =
-            if let Some(user_speech_config) = user_db.get_speech_config(&user) {
-                user_speech_config
-            } else {
-                if user == args.bot_info.get_name().await {
-                    bot_voice.speech_config.clone()
-                } else {
-                    let mut user_speech_config = user_db
-                        .create_speech_config(user_template_voices.clone())
-                        .unwrap();
-                    user_db.add_user(user, user_speech_config.clone());
-                    UserDatabase::save_config::<UserDatabase>(&user_db).await?;
-                    if user_template_voices.pitch.is_some() {
-                        user_speech_config.pitch = user_template_voices.pitch.unwrap();
-                    }
-                    if user_template_voices.rate.is_some() {
-                        user_speech_config.rate = user_template_voices.rate.unwrap();
-                    }
-                    if user_template_voices.volume.is_some() {
-                        user_speech_config.volume = user_template_voices.volume.unwrap();
-                    }
-                    user_speech_config
-                }
-            };
-
-        args.com_bus
-            .send(
-                "TTS",
-                TTSMessage {
-                    timestamp,
-                    message: message.clone(),
-                    user_speech_config: user_tts_speech_config,
-                },
-            )
-            .await?;
-    }
-
-    Ok(())
 }

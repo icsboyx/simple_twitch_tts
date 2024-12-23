@@ -1,20 +1,62 @@
 #![allow(dead_code)]
 
 use crate::colors::Colorize;
+
+use crate::com::MsgChannel;
 use crate::config_manager::filename;
 use crate::config_manager::ConfigManager;
 use crate::irc_parser;
+
 use crate::irc_parser::IrcMessage;
 use crate::Args;
 
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio_tungstenite::tungstenite::Message;
+use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::vec;
+use tokio::sync::RwLock;
+use tokio_tungstenite::tungstenite::Message;
 
-use futures::{ pin_mut, SinkExt, StreamExt };
+use futures::{pin_mut, SinkExt, StreamExt};
+
+pub static TWITCH_MSG: LazyLock<MsgChannel<IrcMessage, String>> =
+    LazyLock::new(|| MsgChannel::new("TwitchMsg".into(), 100));
+
+pub static BOT_INFO: LazyLock<BOTInfo> = LazyLock::new(|| BOTInfo::new());
+
+#[derive(Debug, Clone, Default)]
+pub struct BOTInfo {
+    name: Arc<RwLock<String>>,
+    main_channel: Arc<RwLock<String>>,
+}
+
+impl BOTInfo {
+    pub fn new() -> Self {
+        BOTInfo {
+            name: Arc::new(RwLock::new("".into())),
+            main_channel: Arc::new(RwLock::new("".into())),
+        }
+    }
+
+    pub async fn set_name(&self, name: &str) {
+        *self.name.write().await = name.to_string();
+    }
+
+    pub async fn set_main_channel(&self, main_channel: &str) {
+        *self.main_channel.write().await = main_channel.to_string();
+    }
+
+    pub async fn get_name(&self) -> String {
+        self.name.read().await.clone()
+    }
+
+    pub async fn get_main_channel(&self) -> String {
+        self.main_channel.read().await.clone()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TwitchClient {
@@ -56,12 +98,9 @@ impl<T: std::fmt::Display> WsMessageHandler for T {
 
 pub async fn start(args: Args) -> Result<()> {
     println!("[DEBUG] Starting Twitch Client");
-    let mut my_receiver = args.com_bus.subscribe::<IrcMessage>("TWITCH").await;
 
     // Load twitch Client configuration or use default values and write to config file
-    let twitch_client_config = TwitchClient::load_config::<TwitchClient>(
-        TwitchClient::default()
-    ).await?;
+    let twitch_client_config = TwitchClient::load_config::<TwitchClient>(TwitchClient::default())?;
 
     let server_address = twitch_client_config.server_address;
     let user_token = twitch_client_config.token;
@@ -81,53 +120,47 @@ pub async fn start(args: Args) -> Result<()> {
 
     loop {
         tokio::select! {
-        _ = ping_interval.tick() => {
-            let payload = "PING :tmi.twitch.tv";
-            write.send(payload.to_ws_text()).await?;
-            }
+              _ = ping_interval.tick() => {
+                  let payload = "PING :tmi.twitch.tv";
+                  write.send(payload.to_ws_text()).await?;
+                  }
 
-        Some(line) = read.next() => {
-            if let Ok(line) = line {
-                let lines = line.to_text().unwrap().trim_end_matches("\r\n").split("\r\n");
-                for line in lines {
-                    let payload = line;
-                    println!("{}{} ","[RX][RAW] ".magenta(), payload);
-                    let irc_message = irc_parser::parse_message(&payload.to_string());
-                    match irc_message.context.command.as_str() {
-                        "001" => {
-                            println!("{}{} ","[RX][RAW] ".magenta(), payload);             println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
-                            args.bot_info.set_name(&irc_message.context.destination).await;
-                            args.bot_info.set_main_channel(&user_channel).await;
-                            println!("[DEBUG] Bot Info: {:?}", args.bot_info);
-                        }
-                        "PRIVMSG" => {
-                                // let tts_message: TTSMessage = irc_message.into();
-                                args.com_bus.send("USERS", irc_message).await?;                        
-                            }
-                        "PING" => {
-                            write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;
-                        }
-                        _ => {
-                            // TODO: Add more commands
-                        }     
-                        }
-            }
+              Some(line) = read.next() => {
+                  if let Ok(line) = line {
+                      let lines = line.to_text().unwrap().trim_end_matches("\r\n").split("\r\n");
+                      for line in lines {
+                          let payload = line;
+                          println!("{}{} ","[RX][RAW] ".magenta(), payload);
+                          let irc_message = irc_parser::parse_message(&payload.to_string());
+                          TWITCH_MSG.send_broadcast(irc_message.clone()).await?;
+                          match irc_message.context.command.as_str() {
+                              "001" => {
+                                  println!("{}{} ","[RX][RAW] ".magenta(), payload);
+                                  println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
+                                  BOT_INFO.set_name(&irc_message.context.destination).await;
+                                  BOT_INFO.set_main_channel(&user_channel).await;
+                                  println!("[DEBUG] Bot Info: {:?}", args.bot_info);
+                              }
+                              "PING" => {
+                                  write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;
+                              }
+                              _ => {
+                                  // TODO: Add more commands
+                              }
+                              }
+                  }
+              }
+
+
         }
-    
 
-  }
+              ret_val = TWITCH_MSG.recv() => {
+                if let Ok(ret_val) = ret_val {
+                    println!("[DEBUG] Received message: {:?}", ret_val);
+                    write.send(format!("PRIVMSG #{} :{}", user_channel, ret_val).to_ws_text()).await?;
+              }}
 
-        ret_val = my_receiver.recv() => {
-            let ret_val = ret_val.unwrap();
-            let payload = ret_val.payload;
-            args.com_bus.send("TTS", IrcMessage {
-                payload: payload.clone(),
-                ..IrcMessage::default()
-        }).await?;
-            write.send(format!("PRIVMSG #{} :{}", user_channel, payload).to_ws_text()).await?;
         }
-  
-  }
     }
 }
 
@@ -137,7 +170,7 @@ fn twitch_auth(user_token: &String, user_nick: &String, user_channel: &String) -
         format!("PASS oauth:{}", user_token).to_ws_text(),
         format!("NICK {}", user_nick).to_ws_text(),
         format!("JOIN #{}", user_channel).to_ws_text(),
-        "CAP REQ :twitch.tv/tags".to_ws_text()
+        "CAP REQ :twitch.tv/tags".to_ws_text(),
     ]
 }
 //     vec!(

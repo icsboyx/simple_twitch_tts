@@ -89,7 +89,11 @@ pub async fn start(_args: Args) -> Result<()> {
 }
 
 pub async fn test_command(message: IrcMessage) -> Result<()> {
-    println!("Test command executed!: {:?}", message);
+    let ret_val = format!(
+        "Hi there {} this is the reply to your test message",
+        message.context.sender
+    );
+    TWITCH_MSG.send(ret_val).await?;
     Ok(())
 }
 

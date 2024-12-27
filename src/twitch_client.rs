@@ -120,50 +120,49 @@ pub async fn start(_args: Args) -> Result<()> {
 
     loop {
         tokio::select! {
-              _ = ping_interval.tick() => {
-                  let payload = "PING :tmi.twitch.tv";
-                  write.send(payload.to_ws_text()).await?;
+                  _ = ping_interval.tick() => {
+                      let payload = "PING :tmi.twitch.tv";
+                      write.send(payload.to_ws_text()).await?;
+                      }
+
+                  Some(line) = read.next() => {
+                      if let Ok(line) = line {
+                          let lines = line.to_text().unwrap().trim_end_matches("\r\n").split("\r\n");
+                          for line in lines {
+                              let payload = line;
+                              println!("{}{} ","[RX][RAW] ".magenta(), payload);
+                              let irc_message = irc_parser::parse_message(&payload.to_string());
+                              TWITCH_MSG.send_broadcast(irc_message.clone()).await?;
+                              match irc_message.context.command.as_str() {
+                                  "001" => {
+                                      println!("{}{} ","[RX][RAW] ".magenta(), payload);
+                                      println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
+                                      BOT_INFO.set_name(&irc_message.context.destination).await;
+                                      BOT_INFO.set_main_channel(&user_channel).await;
+                                      println!("[DEBUG] Bot Info: {:?}", BOT_INFO);
+                                  }
+                                  "PING" => {
+                                      write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;
+                                  }
+                                  _ => {
+                                      // TODO: Add more commands
+                                  }
+                                  }
+                      }
                   }
 
-              Some(line) = read.next() => {
-                  if let Ok(line) = line {
-                      let lines = line.to_text().unwrap().trim_end_matches("\r\n").split("\r\n");
-                      for line in lines {
-                          let payload = line;
-                          println!("{}{} ","[RX][RAW] ".magenta(), payload);
-                          let irc_message = irc_parser::parse_message(&payload.to_string());
-                          TWITCH_MSG.send_broadcast(irc_message.clone()).await?;
-                          match irc_message.context.command.as_str() {
-                              "001" => {
-                                  println!("{}{} ","[RX][RAW] ".magenta(), payload);
-                                  println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
-                                  BOT_INFO.set_name(&irc_message.context.destination).await;
-                                  BOT_INFO.set_main_channel(&user_channel).await;
-                                  println!("[DEBUG] Bot Info: {:?}", BOT_INFO);
-                              }
-                              "PING" => {
-                                  write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;
-                              }
-                              _ => {
-                                  // TODO: Add more commands
-                              }
-                              }
-                  }
-              }
 
+            }
 
-        }
-
-              ret_val = TWITCH_MSG.recv() => {
-                if let Ok(ret_val) = ret_val {
-                    println!("[DEBUG] Received message: {:?}", ret_val);
-                    write.send(format!("PRIVMSG #{} :{}", user_channel, ret_val).to_ws_text()).await?;
-              }}
-
+                  ret_val = TWITCH_MSG.recv() => {
+                    if let Ok(ret_val) = ret_val {
+                        for message in split_message(ret_val).await {
+                            write.send(format!("PRIVMSG #{} :{}", user_channel, message).to_ws_text()).await?;
+                        }
+                  }}
         }
     }
 }
-
 fn twitch_auth(user_token: &String, user_nick: &String, user_channel: &String) -> Vec<Message> {
     println!("[DEBUG] Connected to Twitch, sending auth, nick, and join");
     vec![
@@ -173,10 +172,25 @@ fn twitch_auth(user_token: &String, user_nick: &String, user_channel: &String) -
         "CAP REQ :twitch.tv/tags".to_ws_text(),
     ]
 }
-//     vec!(
-//     format!("PASS oauth:{}", user_token).to_ws_text()),
-//     format!("NICK {}", user_nick).to_ws_text()),
-//     format!("JOIN #{}", user_channel).to_ws_text()),
-//     "CAP REQ :twitch.tv/tags".to_ws_text())
-// )
-// }
+
+pub async fn split_message(message: String) -> impl Iterator<Item = String> {
+    let msg_len = 500;
+
+    let messages = message
+        .split_whitespace()
+        .fold(Vec::new(), |mut chunks: Vec<String>, word| {
+            if let Some(last) = chunks.last_mut() {
+                if last.len() + word.len() + 1 <= msg_len {
+                    last.push(' ');
+                    last.push_str(word);
+                } else {
+                    chunks.push(word.to_string());
+                }
+            } else {
+                chunks.push(word.to_string());
+            }
+            chunks
+        });
+
+    messages.into_iter()
+}

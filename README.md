@@ -51,7 +51,7 @@ config/
   ├── BotVoice_config.toml
   ├── TwitchClient_config.toml
   ├── UserDatabase_config.toml
-  ├── UserSpeechTemplate_config.toml
+  ├── TTSVoiceTemplate_config.toml
   └── MSVoice_config.toml
 ```
 
@@ -94,12 +94,12 @@ config/
 - UserDatabase_config.toml:
   - This file contains the configuration for the User Database, of assigned Voices(SpeechConfigs).
   - You can change the voice for a specific user.
-  - The default voice is constructed from `config/UserSpeechTemplate_config.toml` file.
+  - The default voice is constructed from `config/TTSVoiceTemplate_config.toml` file.
   * Voices are persisted among restarts.
 
 ---
 
-- UserSpeechTemplate_config.toml:
+- TTSVoiceTemplate_config.toml:
   - This file contains the configuration for the User Speech Template.
   - You can change the template for the user speech.
     - Commenting out `locale`, `gender`, randomizes the voice.

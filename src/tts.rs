@@ -236,8 +236,19 @@ pub async fn start(_args: Args) -> Result<()> {
 
 pub async fn list_voices(_args: IrcMessage) -> Result<()> {
     let voices = TTS_VOICE_DATABASE.tts_configs.clone();
-    for voice in voices {
-        println!("{:?}", voice.voice_config.short_name);
-    }
+    TWITCH_MSG
+        .send(format!(
+            "Available voices: {}",
+            voices
+                .iter()
+                .map(|voice| voice
+                    .voice_config
+                    .short_name
+                    .clone()
+                    .unwrap_or_else(|| "".into()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+        .await?;
     Ok(())
 }

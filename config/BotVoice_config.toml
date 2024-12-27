@@ -1,6 +1,0 @@
-[speech_config]
-voice_name = "Microsoft Server Speech Text to Speech Voice (it-IT, GiuseppeMultilingualNeural)"
-audio_format = "audio-24khz-48kbitrate-mono-mp3"
-pitch = 40
-rate = 30
-volume = 0

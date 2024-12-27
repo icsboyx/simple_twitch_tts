@@ -1,21 +1,21 @@
 #![allow(dead_code)]
-use com::MsgChannel;
+#![feature(async_closure)]
+
 use futures::stream::FuturesUnordered;
-use irc_parser::IrcMessage;
 use std::sync::Arc;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_stream::StreamExt;
 
-mod audio_player;
-mod colors;
-mod com;
-mod commands;
-mod config_manager;
-mod irc_parser;
-mod macros;
-mod tts;
-mod twitch_client;
-mod users_manager;
+pub mod audio_player;
+pub mod colors;
+pub mod com;
+pub mod commands;
+pub mod config_manager;
+pub mod irc_parser;
+pub mod macros;
+pub mod tts;
+pub mod twitch_client;
+pub mod users_manager;
 
 #[derive(Debug, Clone, Default)]
 pub struct BOTInfo {
@@ -71,19 +71,11 @@ impl TaskManager {
 }
 
 #[derive(Debug, Clone)]
-struct Args {
-    twitch_msg: MsgChannel<IrcMessage, String>,
-    bot_info: BOTInfo,
-}
+pub struct Args {}
 
 #[tokio::main]
 async fn main() {
-    let bot_info = BOTInfo::default();
-
-    let args = Args {
-        twitch_msg: MsgChannel::new("TWITCH".to_string(), 10),
-        bot_info,
-    };
+    let args = Args {};
 
     let mut task_manager = TaskManager::new();
     task_manager.add_task("TWITCH", twitch_client::start(args.clone()));

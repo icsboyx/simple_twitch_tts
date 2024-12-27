@@ -74,21 +74,6 @@ pub async fn play_audio(audio: Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-// pub async fn play_windows(audio: Vec<u8>) -> Result<()> {
-//     use rodio::Decoder;
-//     use rodio::Sink;
-//     use std::io::Cursor;
-
-//     let cursor = Cursor::new(audio);
-//     let source = Decoder::new(cursor)?;
-
-//     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-//     let sink = Sink::try_new(&stream_handle).unwrap();
-//     sink.append(source);
-//     sink.sleep_until_end();
-//     Ok(())
-// }
-
 pub async fn play_on_bot(audio: Vec<u8>) -> Result<()> {
     let cursor = Cursor::new(audio);
     let source = Decoder::new(cursor)?;

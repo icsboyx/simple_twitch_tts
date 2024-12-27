@@ -11,9 +11,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 use crate::{
-    audio_player::TTS_QUEUE, colors::Colorize, commands::COMMAND_PREFIX,
-    config_manager::ConfigManager, twitch_client::TWITCH_MSG, users_manager::USER_DB, Args,
-    WarningPrint,
+    audio_player::TTS_QUEUE,
+    colors::Colorize,
+    commands::{BOT_COMMANDS, COMMAND_PREFIX},
+    config_manager::ConfigManager,
+    irc_parser::IrcMessage,
+    twitch_client::TWITCH_MSG,
+    users_manager::USER_DB,
+    Args, WarningPrint,
 };
 
 pub static TTS_VOICE_DATABASE: LazyLock<TTSDatabase> = LazyLock::new(|| TTSDatabase::new());
@@ -161,29 +166,61 @@ pub struct TTSMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct MSVoice {
+struct TTSVoices {
     voices: Vec<Voice>,
 }
 
-impl MSVoice {
+impl TTSVoices {
     pub fn new() -> Self {
-        MSVoice {
+        TTSVoices {
             voices: get_voices_list().unwrap(),
         }
     }
 }
 
-impl ConfigManager for MSVoice {}
+impl ConfigManager for TTSVoices {}
+
+pub static TTS_VOICE_TEMPLATE: LazyLock<TTSVoiceTemplate> =
+    LazyLock::new(|| TTSVoiceTemplate::load_config(TTSVoiceTemplate::default()).unwrap());
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TTSVoiceTemplate {
+    pub locale: Option<String>,
+    pub gender: Option<TTSGender>,
+    pub pitch: Option<i32>,
+    pub rate: Option<i32>,
+    pub volume: Option<i32>,
+}
+
+impl Default for TTSVoiceTemplate {
+    fn default() -> Self {
+        TTSVoiceTemplate {
+            locale: Some("it-IT".into()),
+            gender: Some(TTSGender::Male),
+            pitch: Some(-1),
+            rate: Some(30),
+            volume: Some(1),
+        }
+    }
+}
+
+impl ConfigManager for TTSVoiceTemplate {}
 
 pub async fn start(_args: Args) -> Result<()> {
     let mut test_broadcast_rx = TWITCH_MSG.subscribe_broadcast().await;
+
+    BOT_COMMANDS
+        .add_command(
+            "list_voices".into(),
+            Box::new(|irc_message| Box::pin(list_voices(irc_message))),
+        )
+        .await;
 
     while let Ok(ret_val) = test_broadcast_rx.recv().await {
         match ret_val.context.command.as_str() {
             "PRIVMSG" if !&ret_val.payload.starts_with(COMMAND_PREFIX) => {
                 let username = ret_val.context.sender;
-                let user_speech_config =
-                    USER_DB.write().await.get_speech_config(&username).unwrap();
+                let user_speech_config = USER_DB.write().await.get_speech_config(&username);
                 let mut tts = connect_async().await?;
                 let audio = tts
                     .synthesize(&ret_val.payload, &user_speech_config)
@@ -193,18 +230,14 @@ pub async fn start(_args: Args) -> Result<()> {
             _ => {}
         };
     }
-    // while let Some(ret_val) = my_receiver.recv().await {
-    //     let mut tts = connect_async().await?;
-    //     let audio = tts
-    //         .synthesize(&ret_val.message, &ret_val.user_speech_config)
-    //         .await?;
-    //     let tts_audio_message = TTSAudioMessage {
-    //         timestamp: ret_val.timestamp,
-    //         audio: audio.audio_bytes,
-    //     };
-    //     drop(tts);
-    //     args.com_bus.send("TTS_PLAYER", tts_audio_message).await?;
-    // }
 
+    Ok(())
+}
+
+pub async fn list_voices(_args: IrcMessage) -> Result<()> {
+    let voices = TTS_VOICE_DATABASE.tts_configs.clone();
+    for voice in voices {
+        println!("{:?}", voice.voice_config.short_name);
+    }
     Ok(())
 }

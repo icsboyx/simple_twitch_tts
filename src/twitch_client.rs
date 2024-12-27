@@ -96,7 +96,7 @@ impl<T: std::fmt::Display> WsMessageHandler for T {
     }
 }
 
-pub async fn start(args: Args) -> Result<()> {
+pub async fn start(_args: Args) -> Result<()> {
     println!("[DEBUG] Starting Twitch Client");
 
     // Load twitch Client configuration or use default values and write to config file
@@ -139,7 +139,7 @@ pub async fn start(args: Args) -> Result<()> {
                                   println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
                                   BOT_INFO.set_name(&irc_message.context.destination).await;
                                   BOT_INFO.set_main_channel(&user_channel).await;
-                                  println!("[DEBUG] Bot Info: {:?}", args.bot_info);
+                                  println!("[DEBUG] Bot Info: {:?}", BOT_INFO);
                               }
                               "PING" => {
                                   write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;

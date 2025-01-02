@@ -1,8 +1,8 @@
 #![allow(dead_code)]
-#![feature(async_closure)]
 
 use anyhow::{Error, Result};
-use std::{future::Future, pin::Pin, process::exit, sync::Arc};
+use futures::executor::block_on;
+use std::{fmt::Display, future::Future, pin::Pin, process::exit, sync::Arc};
 use tokio::sync::RwLock;
 
 pub mod audio_player;
@@ -39,10 +39,12 @@ impl BOTInfo {
         self.main_channel.read().await.clone()
     }
 }
+
+#[derive(Clone)]
 pub struct BotTask {
     name: String,
     task_fn: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>,
-    restarts: u8,
+    restarts: Arc<RwLock<u8>>,
     max_restarts: u8,
 }
 
@@ -58,26 +60,29 @@ impl BotTask {
         BotTask {
             name,
             task_fn: Arc::new(task_fn),
-            restarts: 0,
+            restarts: Arc::new(RwLock::new(0)),
             max_restarts,
         }
     }
 
-    pub async fn run(self) {
-        let task_fn = self.task_fn.clone();
+    pub async fn run(&self) {
+        let self_clone = self.clone();
         tokio::spawn(async move {
             let mut restarts = 0;
-            while restarts <= self.max_restarts {
-                match (task_fn)().await {
+            while restarts <= self_clone.max_restarts {
+                match (self_clone.task_fn)().await {
                     Ok(_) => {
-                        println!("{} task finished successfully!", self.name);
+                        println!("{} task finished successfully!", self_clone.name);
                         break;
                     }
                     Err(err) => {
-                        println!("{} task failed: {:?}", self.name, err);
+                        println!("{} task failed: {:?}", self_clone.name, err);
                         restarts += 1;
-                        if restarts > self.max_restarts {
-                            println!("{} task reached the maximum number of restarts.", self.name);
+                        if restarts > self_clone.max_restarts {
+                            println!(
+                                "{} task reached the maximum number of restarts.",
+                                self_clone.name
+                            );
                             println!("Exiting...");
                             exit(1);
                         }
@@ -85,13 +90,42 @@ impl BotTask {
                 }
                 println!(
                     "Restarting {} task... {}/{}",
-                    self.name, restarts, self.max_restarts
+                    self_clone.name, restarts, self_clone.max_restarts
                 );
             }
         });
     }
 }
 
+impl Display for BotTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        block_on(async {
+            write!(
+                f,
+                "{} task, max restarts {}, actual restarts {}",
+                self.name,
+                self.max_restarts,
+                self.restarts.read().await
+            )
+        })
+    }
+}
+
+impl std::fmt::Debug for BotTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        block_on(async {
+            write!(
+                f,
+                "{} task, max restarts {}, actual restarts {}",
+                self.name,
+                self.max_restarts,
+                self.restarts.read().await
+            )
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct TaskManager {
     tasks: Vec<BotTask>,
 }
@@ -104,7 +138,22 @@ impl TaskManager {
     pub fn add_task(&mut self, task: BotTask) {
         self.tasks.push(task);
     }
+
+    pub async fn run(&self) {
+        for task in &self.tasks {
+            task.run().await;
+        }
+    }
+
+    pub async fn statics(&self) -> String {
+        let mut statics = String::new();
+        for task in &self.tasks {
+            statics.push_str(&format!("{}\n", task));
+        }
+        statics
+    }
 }
+
 #[derive(Debug, Clone, Copy)]
 pub struct Args {}
 
@@ -138,11 +187,12 @@ async fn main() {
     task_manager.add_task(commands_task);
     task_manager.add_task(audio_player_task);
 
-    for task in task_manager.tasks {
-        task.run().await;
-    }
+    task_manager.run().await;
 
     tokio::signal::ctrl_c().await.unwrap();
+
+    println!("Exiting...");
+    println!("Task status: {}", task_manager.statics().await);
 }
 
 async fn run_task<F, Fut>(task_name: String, task_fn: F, args: Args)

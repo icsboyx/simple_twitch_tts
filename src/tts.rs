@@ -243,21 +243,22 @@ pub async fn start(_args: Args) -> Result<()> {
     }
 
     pub async fn text_to_speech(text: &str, speech_config: &SpeechConfig) -> Result<()> {
-        // let text = text
-        //     .chars()
-        //     .map(|c| {
-        //         TRANSFORM_CHARS
-        //             .iter()
-        //             .fold(c.to_string(), |acc, (char_to_replace, replacement)| {
-        //                 acc.replace(*char_to_replace, replacement)
-        //             })
-        //     })
-        //     .collect::<String>();
+        let text = text
+            .chars()
+            .map(|c| {
+                TRANSFORM_CHARS
+                    .iter()
+                    .fold(c.to_string(), |acc, (char_to_replace, replacement)| {
+                        acc.replace(*char_to_replace, replacement)
+                    })
+            })
+            .collect::<String>();
+
         let mut tts = connect_async().await?;
         let audio = tts.synthesize(text.as_ref(), speech_config).await?;
-        // if audio.audio_bytes.is_empty() {
-        //     return Ok(());
-        // }
+        if audio.audio_bytes.is_empty() {
+            return Ok(());
+        }
         println!("Audio bytes: {:#?}", audio.audio_bytes.len());
         TTS_AUDIO_QUEUE.push_back(audio.audio_bytes).await;
 

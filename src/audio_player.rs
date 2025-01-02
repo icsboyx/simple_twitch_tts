@@ -3,60 +3,19 @@ use pulse::{
     sample::{Format, Spec},
     stream::Direction,
 };
-use std::{
-    collections::VecDeque,
-    io::Cursor,
-    sync::{Arc, LazyLock},
-};
-use tokio::sync::{Notify, RwLock};
+use std::{io::Cursor, sync::LazyLock};
 
-use crate::Args;
-use anyhow::{Ok, Result};
+use crate::{com::MSGQueue, Args};
+use anyhow::Result;
 use rodio::{Decoder, OutputStream};
 
-#[derive(Debug, Clone)]
-pub struct TTSQueue {
-    queue: Arc<RwLock<VecDeque<Vec<u8>>>>,
-    notify: Arc<tokio::sync::Notify>,
-}
-
-impl TTSQueue {
-    pub fn new() -> Self {
-        Self {
-            queue: Arc::new(RwLock::new(VecDeque::new())),
-            notify: Arc::new(Notify::new()),
-        }
-    }
-
-    pub async fn push_back(&self, audio: Vec<u8>) {
-        self.queue.write().await.push_back(audio);
-        println!("Audio buffer {:#?}", self.queue.read().await.len());
-        self.notify.notify_waiters();
-    }
-
-    pub async fn next(&self) -> Option<Vec<u8>> {
-        loop {
-            println!("Audio buffer {:#?}", self.queue.read().await.len());
-            if let Some(audio) = self.queue.write().await.pop_front() {
-                return Some(audio);
-            }
-            self.notify.notified().await;
-        }
-    }
-
-    pub async fn len(&self) -> usize {
-        self.queue.read().await.len()
-    }
-}
-
-pub static TTS_QUEUE: LazyLock<TTSQueue> = LazyLock::new(|| TTSQueue::new());
+pub static TTS_AUDIO_QUEUE: LazyLock<MSGQueue<Vec<u8>>> = LazyLock::new(|| MSGQueue::new());
 
 pub async fn start(_args: Args) -> Result<()> {
-    while let Some(audio) = TTS_QUEUE.next().await {
+    while let Some(audio) = TTS_AUDIO_QUEUE.next().await {
         play_on_bot(audio).await?;
     }
-
-    Ok(())
+    Err(anyhow::anyhow!("TTS player stopped"))
 }
 
 pub async fn play_audio(audio: Vec<u8>) -> Result<()> {

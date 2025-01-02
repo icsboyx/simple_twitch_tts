@@ -13,6 +13,7 @@ use crate::Args;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
+
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -89,9 +90,20 @@ trait WsMessageHandler {
     fn to_ws_text(&self) -> Message;
 }
 
-impl<T: std::fmt::Display> WsMessageHandler for T {
+impl<T> WsMessageHandler for T
+where
+    T: std::fmt::Display + Into<String>,
+{
     fn to_ws_text(&self) -> Message {
-        println!("{} {}", "[TX][RAW]".blue(), self);
+        if !self.to_string().starts_with("PASS") {
+            println!("{} {}", "[TX][RAW]".blue(), self)
+        } else {
+            println!(
+                "{} {}",
+                "[TX][RAW]".blue(),
+                "PASS oauth:**************************"
+            )
+        };
         Message::text(self.to_string())
     }
 }
@@ -132,7 +144,9 @@ pub async fn start(_args: Args) -> Result<()> {
                               let payload = line;
                               println!("{}{} ","[RX][RAW] ".magenta(), payload);
                               let irc_message = irc_parser::parse_message(&payload.to_string());
-                              TWITCH_MSG.send_broadcast(irc_message.clone()).await?;
+                              TWITCH_MSG.send_broadcast(irc_message.clone()).await.unwrap_or_else(|e| {
+                                  println!("Error: Failed to send message to channel {:?}: {:?}", TWITCH_MSG, e);
+                              });
                               match irc_message.context.command.as_str() {
                                   "001" => {
                                       println!("{}{} ","[RX][RAW] ".magenta(), payload);

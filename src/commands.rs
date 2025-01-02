@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use crate::{irc_parser::IrcMessage, twitch_client::TWITCH_MSG, Args};
+use crate::{irc_parser::IrcMessage, tts::TTS_MSG_QUEUE, twitch_client::TWITCH_MSG, Args};
 use anyhow::{Error, Result};
 
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use tokio::sync::RwLock;
 
 pub static BOT_COMMANDS: LazyLock<BotCommands> = LazyLock::new(|| BotCommands::new());
 
-pub static COMMAND_PREFIX: &str = "!!";
+pub static COMMAND_PREFIX: &str = "!";
 static BOT_COMMAND_DIR: &str = "bot_commands";
 static COMMANDS_FILE_EXT: &str = "toml";
 
@@ -26,7 +26,9 @@ pub struct CommandMessage {
 }
 
 type BotCommandFn = Box<
-    dyn Fn(IrcMessage) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync,
+    dyn Fn(IrcMessage) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + Sync>>
+        + Send
+        + Sync,
 >;
 
 impl BotCommands {
@@ -37,6 +39,7 @@ impl BotCommands {
     }
 
     pub async fn add_command(&self, trigger: String, command: BotCommandFn) {
+        println!("Adding command: {}", trigger);
         self.commands.write().await.insert(trigger.clone(), command);
     }
 
@@ -57,7 +60,7 @@ pub async fn start(_args: Args) -> Result<()> {
 
     BOT_COMMANDS
         .add_command(
-            "list".into(),
+            "help".into(),
             Box::new(|irc_message| Box::pin(list_all_commands(irc_message))),
         )
         .await;
@@ -78,7 +81,7 @@ pub async fn start(_args: Args) -> Result<()> {
                     .split_whitespace()
                     .next()
                     .unwrap()
-                    .trim_start_matches("!!");
+                    .trim_start_matches(COMMAND_PREFIX);
                 BOT_COMMANDS.run_command(command, ret_val.clone()).await?;
             }
             _ => {}
@@ -93,16 +96,23 @@ pub async fn test_command(message: IrcMessage) -> Result<()> {
         "Hi there {} this is the reply to your test message",
         message.context.sender
     );
+    TTS_MSG_QUEUE.push_back(ret_val.clone()).await;
     TWITCH_MSG.send(ret_val).await?;
     Ok(())
 }
 
 pub async fn list_all_commands(_message: IrcMessage) -> Result<()> {
-    BOT_COMMANDS
+    let triggers = BOT_COMMANDS
         .commands
         .read()
         .await
         .iter()
-        .for_each(|(trigger, _)| println!("{}", trigger));
+        .map(|(trigger, _)| format!("{}{}", COMMAND_PREFIX, trigger))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let ret_val = format!("Available commands: {}", triggers);
+    TTS_MSG_QUEUE.push_back(ret_val.clone()).await;
+    TWITCH_MSG.send(ret_val).await?;
     Ok(())
 }

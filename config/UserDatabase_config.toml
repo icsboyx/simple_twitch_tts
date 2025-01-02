@@ -1,5 +1,26 @@
+[users.baudaffipasquale]
+voice_name = "Microsoft Server Speech Text to Speech Voice (fr-FR, HenriNeural)"
+audio_format = "audio-24khz-48kbitrate-mono-mp3"
+pitch = -1
+rate = 30
+volume = 1
+
 [users.icsboyx]
 voice_name = "Microsoft Server Speech Text to Speech Voice (it-IT, DiegoNeural)"
+audio_format = "audio-24khz-48kbitrate-mono-mp3"
+pitch = -1
+rate = 30
+volume = 1
+
+[users.martin_lomax_]
+voice_name = "Microsoft Server Speech Text to Speech Voice (kk-KZ, AigulNeural)"
+audio_format = "audio-24khz-48kbitrate-mono-mp3"
+pitch = -1
+rate = 30
+volume = 1
+
+[users.botonex]
+voice_name = "Microsoft Server Speech Text to Speech Voice (fr-FR, RemyMultilingualNeural)"
 audio_format = "audio-24khz-48kbitrate-mono-mp3"
 pitch = -1
 rate = 30

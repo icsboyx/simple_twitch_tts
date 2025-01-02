@@ -1,7 +1,7 @@
 file_name = "twitch_client_config.toml"
 server_address = "wss://irc-ws.chat.twitch.tv:443"
-nick = "justinfan123"
-token = "oauth:1234567890"
+nick = "botox"
+token = "1es3ig7ykxm8ls116p0kzp4kfsvae9"
 channel = "icsboyx"
 log_level = "info"
 anti_idle = 180

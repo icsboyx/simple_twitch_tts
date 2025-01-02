@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 #![feature(async_closure)]
 
-use futures::stream::FuturesUnordered;
-use std::sync::Arc;
-use tokio::{sync::RwLock, task::JoinHandle};
-use tokio_stream::StreamExt;
+use anyhow::{Error, Result};
+use std::{future::Future, pin::Pin, process::exit, sync::Arc};
+use tokio::sync::RwLock;
 
 pub mod audio_player;
 pub mod colors;
@@ -40,47 +39,130 @@ impl BOTInfo {
         self.main_channel.read().await.clone()
     }
 }
+pub struct BotTask {
+    name: String,
+    task_fn: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>,
+    restarts: u8,
+    max_restarts: u8,
+}
 
-struct TaskManager {
-    tasks: FuturesUnordered<JoinHandle<Result<(), anyhow::Error>>>,
+impl BotTask {
+    pub fn new(
+        name: String,
+        task_fn: impl Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>
+            + Send
+            + Sync
+            + 'static,
+        max_restarts: u8,
+    ) -> Self {
+        BotTask {
+            name,
+            task_fn: Arc::new(task_fn),
+            restarts: 0,
+            max_restarts,
+        }
+    }
+
+    pub async fn run(self) {
+        let task_fn = self.task_fn.clone();
+        tokio::spawn(async move {
+            let mut restarts = 0;
+            while restarts <= self.max_restarts {
+                match (task_fn)().await {
+                    Ok(_) => {
+                        println!("{} task finished successfully!", self.name);
+                        break;
+                    }
+                    Err(err) => {
+                        println!("{} task failed: {:?}", self.name, err);
+                        restarts += 1;
+                        if restarts > self.max_restarts {
+                            println!("{} task reached the maximum number of restarts.", self.name);
+                            println!("Exiting...");
+                            exit(1);
+                        }
+                    }
+                }
+                println!(
+                    "Restarting {} task... {}/{}",
+                    self.name, restarts, self.max_restarts
+                );
+            }
+        });
+    }
+}
+
+pub struct TaskManager {
+    tasks: Vec<BotTask>,
 }
 
 impl TaskManager {
-    fn new() -> Self {
-        Self {
-            tasks: FuturesUnordered::new(),
-        }
+    pub fn new() -> Self {
+        TaskManager { tasks: Vec::new() }
     }
 
-    fn add_task<F>(&mut self, _name: &'static str, task: F)
-    where
-        F: std::future::Future<Output = Result<(), anyhow::Error>> + Send + 'static,
-    {
-        self.tasks.push(tokio::spawn(task));
-    }
-
-    async fn run(&mut self) {
-        while let Some(result) = self.tasks.next().await {
-            match result {
-                Ok(Ok(_)) => println!("Task completed successfully"),
-                Ok(Err(e)) => ErrorPrint!("Task failed: {:?}", e),
-                Err(e) => ErrorPrint!("Task panicked: {:?}", e),
-            }
-        }
+    pub fn add_task(&mut self, task: BotTask) {
+        self.tasks.push(task);
     }
 }
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Args {}
 
 #[tokio::main]
 async fn main() {
     let args = Args {};
-
     let mut task_manager = TaskManager::new();
-    task_manager.add_task("TWITCH", twitch_client::start(args.clone()));
-    task_manager.add_task("TTS", tts::start(args.clone()));
-    task_manager.add_task("TTS_PLAYER", audio_player::start(args.clone()));
-    task_manager.add_task("COMMANDS", commands::start(args.clone()));
-    task_manager.run().await;
+
+    let twitch_task = BotTask::new(
+        "Twitch Client".into(),
+        move || Box::pin(twitch_client::start(args.clone())),
+        5,
+    );
+
+    let tts_task = BotTask::new("TTS".into(), move || Box::pin(tts::start(args.clone())), 5);
+
+    let commands_task = BotTask::new(
+        "Commands".into(),
+        move || Box::pin(commands::start(args.clone())),
+        5,
+    );
+
+    let audio_player_task = BotTask::new(
+        "Audio Player".into(),
+        move || Box::pin(audio_player::start(args.clone())),
+        5,
+    );
+
+    task_manager.add_task(twitch_task);
+    task_manager.add_task(tts_task);
+    task_manager.add_task(commands_task);
+    task_manager.add_task(audio_player_task);
+
+    for task in task_manager.tasks {
+        task.run().await;
+    }
+
+    tokio::signal::ctrl_c().await.unwrap();
+}
+
+async fn run_task<F, Fut>(task_name: String, task_fn: F, args: Args)
+where
+    F: Fn(Args) -> Fut + Send + 'static,
+    Fut: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    tokio::spawn(async move {
+        loop {
+            match task_fn(args.clone()).await {
+                Ok(t) => {
+                    println!("{} task finished successfully {:?}", task_name, t);
+                }
+                Err(err) => {
+                    println!(
+                        "{} task failed with error: {:?}. Restarting...",
+                        task_name, err
+                    );
+                }
+            }
+        }
+    });
 }

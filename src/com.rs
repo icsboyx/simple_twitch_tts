@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use std::{fmt::Debug, sync::Arc};
-use tokio::sync::RwLock;
+use std::{collections::VecDeque, fmt::Debug, sync::Arc};
+use tokio::sync::{Notify, RwLock};
 
 #[derive(Debug, Clone)]
 
@@ -39,7 +39,9 @@ where
     }
 
     pub async fn send_broadcast(&self, message: BM) -> Result<()> {
-        self.broadcaster.send(message)?;
+        if self.broadcaster.receiver_count() > 0 {
+            self.broadcaster.send(message)?;
+        }
         Ok(())
     }
 
@@ -59,5 +61,56 @@ where
                 self.name
             )
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MSGQueue<T>
+where
+    T: Sync + Send + Clone + Debug + 'static,
+{
+    queue: Arc<RwLock<VecDeque<T>>>,
+    notify: Arc<tokio::sync::Notify>,
+}
+
+impl<T> MSGQueue<T>
+where
+    T: Sync + Send + Clone + Debug + 'static,
+{
+    pub fn new() -> Self {
+        Self {
+            queue: Arc::new(RwLock::new(VecDeque::new())),
+            notify: Arc::new(Notify::new()),
+        }
+    }
+
+    pub async fn push_back(&self, payload: T) {
+        self.queue.write().await.push_back(payload);
+        println!("Audio buffer {:#?}", self.queue.read().await.len());
+        self.notify.notify_waiters();
+    }
+
+    pub async fn next(&self) -> Option<T> {
+        loop {
+            println!("Audio buffer {:#?}", self.queue.read().await.len());
+            if let Some(value) = self.queue.write().await.pop_front() {
+                return Some(value);
+            }
+            self.notify.notified().await;
+        }
+    }
+
+    pub async fn next_error(&self) -> Result<T> {
+        loop {
+            println!("Audio buffer {:#?}", self.queue.read().await.len());
+            if let Some(value) = self.queue.write().await.pop_front() {
+                return Ok(value);
+            }
+            self.notify.notified().await;
+        }
+    }
+
+    pub async fn len(&self) -> usize {
+        self.queue.read().await.len()
     }
 }

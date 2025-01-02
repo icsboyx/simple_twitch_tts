@@ -259,7 +259,7 @@ pub async fn start(_args: Args) -> Result<()> {
         if audio.audio_bytes.is_empty() {
             return Ok(());
         }
-        println!("Audio bytes: {:#?}", audio.audio_bytes.len());
+
         TTS_AUDIO_QUEUE.push_back(audio.audio_bytes).await;
 
         Ok(())

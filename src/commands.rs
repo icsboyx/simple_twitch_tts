@@ -9,6 +9,7 @@ use std::{
 use crate::{irc_parser::IrcMessage, tts::TTS_MSG_QUEUE, twitch_client::TWITCH_MSG, Args};
 use anyhow::{Error, Result};
 
+use futures::future::err;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -72,6 +73,13 @@ pub async fn start(_args: Args) -> Result<()> {
         )
         .await;
 
+    BOT_COMMANDS
+        .add_command(
+            "die".into(),
+            Box::new(|irc_message| Box::pin(die(irc_message))),
+        )
+        .await;
+
     // Read all broadcasted commands from Twitch_client
     while let Ok(ret_val) = test_broadcast_rx.recv().await {
         match ret_val.context.command.as_str() {
@@ -89,6 +97,13 @@ pub async fn start(_args: Args) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn die(_message: IrcMessage) -> Result<()> {
+    let ret_val = "Goodbye cruel world".to_string();
+    TTS_MSG_QUEUE.push_back(ret_val.clone()).await;
+    TWITCH_MSG.send(ret_val).await?;
+    err(Error::msg("I'm dying as you wish!")).await
 }
 
 pub async fn test_command(message: IrcMessage) -> Result<()> {

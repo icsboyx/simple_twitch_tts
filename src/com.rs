@@ -86,13 +86,11 @@ where
 
     pub async fn push_back(&self, payload: T) {
         self.queue.write().await.push_back(payload);
-        println!("Audio buffer {:#?}", self.queue.read().await.len());
         self.notify.notify_waiters();
     }
 
     pub async fn next(&self) -> Option<T> {
         loop {
-            println!("Audio buffer {:#?}", self.queue.read().await.len());
             if let Some(value) = self.queue.write().await.pop_front() {
                 return Some(value);
             }
@@ -102,7 +100,6 @@ where
 
     pub async fn next_error(&self) -> Result<T> {
         loop {
-            println!("Audio buffer {:#?}", self.queue.read().await.len());
             if let Some(value) = self.queue.write().await.pop_front() {
                 return Ok(value);
             }

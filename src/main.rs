@@ -2,8 +2,8 @@
 
 use anyhow::{Error, Result};
 use futures::executor::block_on;
-use std::{fmt::Display, future::Future, pin::Pin, process::exit, sync::Arc};
-use tokio::sync::RwLock;
+use std::{fmt::Display, future::Future, pin::Pin, sync::Arc};
+use tokio::sync::{Notify, RwLock};
 
 pub mod audio_player;
 pub mod colors;
@@ -46,6 +46,7 @@ pub struct BotTask {
     task_fn: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>,
     restarts: Arc<RwLock<u8>>,
     max_restarts: u8,
+    current_join_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl BotTask {
@@ -62,38 +63,8 @@ impl BotTask {
             task_fn: Arc::new(task_fn),
             restarts: Arc::new(RwLock::new(0)),
             max_restarts,
+            current_join_handle: Arc::new(RwLock::new(None)),
         }
-    }
-
-    pub async fn run(&self) {
-        let self_clone = self.clone();
-        tokio::spawn(async move {
-            let mut restarts = 0;
-            while restarts <= self_clone.max_restarts {
-                match (self_clone.task_fn)().await {
-                    Ok(_) => {
-                        println!("{} task finished successfully!", self_clone.name);
-                        break;
-                    }
-                    Err(err) => {
-                        println!("{} task failed: {:?}", self_clone.name, err);
-                        restarts += 1;
-                        if restarts > self_clone.max_restarts {
-                            println!(
-                                "{} task reached the maximum number of restarts.",
-                                self_clone.name
-                            );
-                            println!("Exiting...");
-                            exit(1);
-                        }
-                    }
-                }
-                println!(
-                    "Restarting {} task... {}/{}",
-                    self_clone.name, restarts, self_clone.max_restarts
-                );
-            }
-        });
     }
 }
 
@@ -127,21 +98,56 @@ impl std::fmt::Debug for BotTask {
 
 #[derive(Debug)]
 pub struct TaskManager {
+    exit_conditions: Arc<Notify>,
     tasks: Vec<BotTask>,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
-        TaskManager { tasks: Vec::new() }
+        TaskManager {
+            exit_conditions: Arc::new(Notify::new()),
+            tasks: Vec::new(),
+        }
     }
 
     pub fn add_task(&mut self, task: BotTask) {
         self.tasks.push(task);
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&mut self) {
         for task in &self.tasks {
-            task.run().await;
+            let exit_condition = self.exit_conditions.clone();
+            let task_clone = task.clone();
+            let jh = tokio::spawn(async move {
+                loop {
+                    println!(
+                        "{}\nRunning {} task...\n{}",
+                        "#".repeat(100),
+                        &task_clone,
+                        "#".repeat(100)
+                    );
+                    match (task_clone.task_fn)().await {
+                        Ok(_) => {
+                            println!("{} task finished successfully!", task_clone.name);
+                            break;
+                        }
+                        Err(err) => {
+                            println!("{} task failed: {:?}", task_clone.name, err);
+                        }
+                    }
+                    if *task_clone.restarts.write().await == task_clone.max_restarts {
+                        break;
+                    }
+                    *task_clone.restarts.write().await += 1;
+                }
+                println!(
+                    "{} task reached the maximum number of restarts.",
+                    task_clone.name
+                );
+                exit_condition.notify_waiters();
+            });
+
+            task.current_join_handle.write().await.replace(jh);
         }
     }
 
@@ -153,7 +159,6 @@ impl TaskManager {
         statics
     }
 }
-
 #[derive(Debug, Clone, Copy)]
 pub struct Args {}
 
@@ -173,7 +178,7 @@ async fn main() {
     let commands_task = BotTask::new(
         "Commands".into(),
         move || Box::pin(commands::start(args.clone())),
-        5,
+        2,
     );
 
     let audio_player_task = BotTask::new(
@@ -189,30 +194,37 @@ async fn main() {
 
     task_manager.run().await;
 
-    tokio::signal::ctrl_c().await.unwrap();
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("Received Ctrl-C signal. Exiting...");
+        }
 
-    println!("Exiting...");
+        _ = task_manager.exit_conditions.notified() => {
+            println!("Exiting...");
+        }
+    }
+
     println!("Task status: {}", task_manager.statics().await);
 }
 
-async fn run_task<F, Fut>(task_name: String, task_fn: F, args: Args)
-where
-    F: Fn(Args) -> Fut + Send + 'static,
-    Fut: Future<Output = Result<(), Error>> + Send + 'static,
-{
-    tokio::spawn(async move {
-        loop {
-            match task_fn(args.clone()).await {
-                Ok(t) => {
-                    println!("{} task finished successfully {:?}", task_name, t);
-                }
-                Err(err) => {
-                    println!(
-                        "{} task failed with error: {:?}. Restarting...",
-                        task_name, err
-                    );
-                }
-            }
-        }
-    });
-}
+// async fn run_task<F, Fut>(task_name: String, task_fn: F, args: Args)
+// where
+//     F: Fn(Args) -> Fut + Send + 'static,
+//     Fut: Future<Output = Result<(), Error>> + Send + 'static,
+// {
+//     tokio::spawn(async move {
+//         loop {
+//             match task_fn(args.clone()).await {
+//                 Ok(t) => {
+//                     println!("{} task finished successfully {:?}", task_name, t);
+//                 }
+//                 Err(err) => {
+//                     println!(
+//                         "{} task failed with error: {:?}. Restarting...",
+//                         task_name, err
+//                     );
+//                 }
+//             }
+//         }
+//     });
+// }

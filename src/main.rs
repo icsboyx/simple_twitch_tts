@@ -121,8 +121,13 @@ impl TaskManager {
             let jh = tokio::spawn(async move {
                 loop {
                     println!(
-                        "{}\nRunning {} task...\n{}",
+                        "{}\n{} {} task...\n{}",
                         "#".repeat(100),
+                        if *task_clone.restarts.read().await == 0 {
+                            "Starting"
+                        } else {
+                            "Restarting"
+                        },
                         &task_clone,
                         "#".repeat(100)
                     );
@@ -196,7 +201,7 @@ async fn main() {
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
-            println!("Received Ctrl-C signal. Exiting...");
+            println!("\nReceived Ctrl-C signal. Exiting...");
         }
 
         _ = task_manager.exit_conditions.notified() => {

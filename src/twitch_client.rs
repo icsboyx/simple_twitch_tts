@@ -109,8 +109,6 @@ where
 }
 
 pub async fn start(_args: Args) -> Result<()> {
-    println!("[DEBUG] Starting Twitch Client");
-
     // Load twitch Client configuration or use default values and write to config file
     let twitch_client_config = TwitchClient::load_config::<TwitchClient>(TwitchClient::default())?;
 
@@ -150,10 +148,8 @@ pub async fn start(_args: Args) -> Result<()> {
                               match irc_message.context.command.as_str() {
                                   "001" => {
                                       println!("{}{} ","[RX][RAW] ".magenta(), payload);
-                                      println!("[DEBUG] Bot {}, connected to Twitch.", irc_message.context.destination);
                                       BOT_INFO.set_name(&irc_message.context.destination).await;
                                       BOT_INFO.set_main_channel(&user_channel).await;
-                                      println!("[DEBUG] Bot Info: {:?}", BOT_INFO);
                                   }
                                   "PING" => {
                                       write.send("PONG :tmi.twitch.tv".to_ws_text()).await?;
@@ -178,7 +174,6 @@ pub async fn start(_args: Args) -> Result<()> {
     }
 }
 fn twitch_auth(user_token: &String, user_nick: &String, user_channel: &String) -> Vec<Message> {
-    println!("[DEBUG] Connected to Twitch, sending auth, nick, and join");
     vec![
         format!("PASS oauth:{}", user_token).to_ws_text(),
         format!("NICK {}", user_nick).to_ws_text(),

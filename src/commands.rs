@@ -40,7 +40,7 @@ impl BotCommands {
     }
 
     pub async fn add_command(&self, trigger: String, command: BotCommandFn) {
-        println!("Adding command: {}", trigger);
+        println!("[DEBUG] Adding command: {}", trigger);
         self.commands.write().await.insert(trigger.clone(), command);
     }
 

@@ -13,7 +13,7 @@ use futures::future::err;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-pub static BOT_COMMANDS: LazyLock<BotCommands> = LazyLock::new(|| BotCommands::new());
+pub static BOT_COMMANDS: LazyLock<BotCommands> = LazyLock::new(|| BotCommands::default());
 
 pub static COMMAND_PREFIX: &str = "!";
 static BOT_COMMAND_DIR: &str = "bot_commands";
@@ -32,16 +32,16 @@ type BotCommandFn = Box<
         + Sync,
 >;
 
-impl BotCommands {
-    pub fn new() -> Self {
-        BotCommands {
-            commands: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
+#[derive(Default)]
+pub struct BotCommands {
+    commands: Arc<RwLock<HashMap<String, BotCommandFn>>>,
+}
 
-    pub async fn add_command(&self, trigger: String, command: BotCommandFn) {
+impl BotCommands {
+    pub async fn add_command(&self, trigger: impl Into<String>, command: BotCommandFn) {
+        let trigger = trigger.into();
         println!("[DEBUG] Adding command: {}", trigger);
-        self.commands.write().await.insert(trigger.clone(), command);
+        self.commands.write().await.insert(trigger, command);
     }
 
     pub async fn run_command(&self, command: &str, message: IrcMessage) -> Result<()> {
@@ -52,32 +52,25 @@ impl BotCommands {
     }
 }
 
-pub struct BotCommands {
-    commands: Arc<RwLock<HashMap<String, BotCommandFn>>>,
-}
-
 pub async fn start(_args: Args) -> Result<()> {
     let mut test_broadcast_rx = TWITCH_MSG.subscribe_broadcast().await;
 
     BOT_COMMANDS
         .add_command(
-            "help".into(),
+            "help",
             Box::new(|irc_message| Box::pin(list_all_commands(irc_message))),
         )
         .await;
 
     BOT_COMMANDS
         .add_command(
-            "test".into(),
+            "test",
             Box::new(|irc_message| Box::pin(test_command(irc_message))),
         )
         .await;
 
     BOT_COMMANDS
-        .add_command(
-            "die".into(),
-            Box::new(|irc_message| Box::pin(die(irc_message))),
-        )
+        .add_command("die", Box::new(|irc_message| Box::pin(die(irc_message))))
         .await;
 
     // Read all broadcasted commands from Twitch_client

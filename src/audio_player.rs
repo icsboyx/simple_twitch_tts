@@ -9,7 +9,7 @@ use crate::{com::MSGQueue, Args};
 use anyhow::Result;
 use rodio::{Decoder, OutputStream};
 
-pub static TTS_AUDIO_QUEUE: LazyLock<MSGQueue<Vec<u8>>> = LazyLock::new(|| MSGQueue::new());
+pub static TTS_AUDIO_QUEUE: LazyLock<MSGQueue<Vec<u8>>> = LazyLock::new(|| MSGQueue::default());
 
 pub async fn start(_args: Args) -> Result<()> {
     while let Some(audio) = TTS_AUDIO_QUEUE.next().await {

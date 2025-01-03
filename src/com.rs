@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 
@@ -22,11 +22,11 @@ where
     BM: Sync + Send + Clone + Debug + 'static,
     SM: Sync + Send + Clone + Debug + 'static,
 {
-    pub fn new(name: String, capacity: usize) -> Self {
+    pub fn new(name: impl Into<String>, capacity: usize) -> Self {
         let (broadcaster_tx, _) = tokio::sync::broadcast::channel(capacity);
         let (tx, rx) = tokio::sync::mpsc::channel(capacity);
-        MsgChannel {
-            name,
+        Self {
+            name: name.into(),
             broadcaster: broadcaster_tx,
             sender: tx,
             receiver: Arc::new(RwLock::new(rx)),
@@ -64,7 +64,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MSGQueue<T>
 where
     T: Sync + Send + Clone + Debug + 'static,
@@ -77,13 +77,6 @@ impl<T> MSGQueue<T>
 where
     T: Sync + Send + Clone + Debug + 'static,
 {
-    pub fn new() -> Self {
-        Self {
-            queue: Arc::new(RwLock::new(VecDeque::new())),
-            notify: Arc::new(Notify::new()),
-        }
-    }
-
     pub async fn push_back(&self, payload: T) {
         self.queue.write().await.push_back(payload);
         self.notify.notify_waiters();

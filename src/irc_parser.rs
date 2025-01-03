@@ -1,8 +1,8 @@
 // Parse the twitch message and return the  message object
 #![allow(dead_code, unused_variables)]
-use std::collections::HashMap;
 use chrono::Local;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct IrcMessage {
@@ -16,9 +16,9 @@ impl IrcMessage {
     pub fn new(
         token: HashMap<String, String>,
         context: Context,
-        payload: impl Into<String>
+        payload: impl Into<String>,
     ) -> Self {
-        IrcMessage {
+        Self {
             timestamp: Local::now().timestamp_millis(),
             token,
             context,
@@ -38,9 +38,9 @@ impl Context {
     pub fn new(
         sender: impl Into<String>,
         command: impl Into<String>,
-        destination: impl Into<String>
+        destination: impl Into<String>,
     ) -> Self {
-        Context {
+        Self {
             sender: sender.into(),
             command: command.into(),
             destination: destination.into(),
@@ -81,7 +81,7 @@ pub fn parse_message(msg: &String) -> IrcMessage {
     let irc_message = IrcMessage::new(
         parse_irc_message_token(token),
         parse_irc_message_context(context),
-        payload
+        payload,
     );
 
     irc_message
@@ -100,7 +100,12 @@ fn parse_irc_message_context(context: &str) -> Context {
     let destination = context_arr.last().unwrap_or(&"").trim();
 
     let sender = if sender_full.contains('!') {
-        sender_full.split('!').collect::<Vec<&str>>().get(0).unwrap_or(&"").to_string()
+        sender_full
+            .split('!')
+            .collect::<Vec<&str>>()
+            .get(0)
+            .unwrap_or(&"")
+            .to_string()
     } else {
         sender_full.to_string()
     };

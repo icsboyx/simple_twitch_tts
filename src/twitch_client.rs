@@ -24,9 +24,9 @@ use tokio_tungstenite::tungstenite::Message;
 use futures::{pin_mut, SinkExt, StreamExt};
 
 pub static TWITCH_MSG: LazyLock<MsgChannel<IrcMessage, String>> =
-    LazyLock::new(|| MsgChannel::new("TwitchMsg".into(), 100));
+    LazyLock::new(|| MsgChannel::new("TwitchMsg", 100));
 
-pub static BOT_INFO: LazyLock<BOTInfo> = LazyLock::new(|| BOTInfo::new());
+pub static BOT_INFO: LazyLock<BOTInfo> = LazyLock::new(|| BOTInfo::default());
 
 #[derive(Debug, Clone, Default)]
 pub struct BOTInfo {
@@ -35,13 +35,6 @@ pub struct BOTInfo {
 }
 
 impl BOTInfo {
-    pub fn new() -> Self {
-        BOTInfo {
-            name: Arc::new(RwLock::new("".into())),
-            main_channel: Arc::new(RwLock::new("".into())),
-        }
-    }
-
     pub async fn set_name(&self, name: &str) {
         *self.name.write().await = name.to_string();
     }
@@ -74,7 +67,8 @@ impl ConfigManager for TwitchClient {}
 
 impl Default for TwitchClient {
     fn default() -> Self {
-        TwitchClient {
+        // This is the default configuration for the TwitchClient to join as an anonymous user
+        Self {
             file_name: filename("twitch_client"),
             server_address: "wss://irc-ws.chat.twitch.tv:443".into(),
             nick: "justinfan123".into(),
@@ -182,24 +176,26 @@ fn twitch_auth(user_token: &String, user_nick: &String, user_channel: &String) -
     ]
 }
 
-pub async fn split_message(message: String) -> impl Iterator<Item = String> {
+pub async fn split_message(message: impl Into<String>) -> impl Iterator<Item = String> {
     let msg_len = 500;
 
-    let messages = message
-        .split_whitespace()
-        .fold(Vec::new(), |mut chunks: Vec<String>, word| {
-            if let Some(last) = chunks.last_mut() {
-                if last.len() + word.len() + 1 <= msg_len {
-                    last.push(' ');
-                    last.push_str(word);
+    let messages =
+        message
+            .into()
+            .split_whitespace()
+            .fold(Vec::new(), |mut chunks: Vec<String>, word| {
+                if let Some(last) = chunks.last_mut() {
+                    if last.len() + word.len() + 1 <= msg_len {
+                        last.push(' ');
+                        last.push_str(word);
+                    } else {
+                        chunks.push(word.to_string());
+                    }
                 } else {
                     chunks.push(word.to_string());
                 }
-            } else {
-                chunks.push(word.to_string());
-            }
-            chunks
-        });
+                chunks
+            });
 
     messages.into_iter()
 }

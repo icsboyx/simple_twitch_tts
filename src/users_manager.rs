@@ -22,7 +22,7 @@ pub struct BotVoice {
 }
 impl Default for BotVoice {
     fn default() -> Self {
-        BotVoice {
+        Self {
             speech_config: SpeechConfig {
                 voice_name: "Microsoft Server Speech Text to Speech Voice (it-IT, GiuseppeMultilingualNeural)".into(),
                 audio_format: "audio-24khz-48kbitrate-mono-mp3".into(),
@@ -43,9 +43,9 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(nickname: String, speech_config: SpeechConfig) -> Self {
-        User {
-            nickname,
+    pub fn new(nickname: impl Into<String>, speech_config: SpeechConfig) -> Self {
+        Self {
+            nickname: nickname.into(),
             speech_config,
         }
     }

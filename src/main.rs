@@ -40,10 +40,12 @@ impl BOTInfo {
     }
 }
 
+type BotTaskFn = Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>;
+
 #[derive(Clone)]
 pub struct BotTask {
     name: String,
-    task_fn: Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>,
+    task_fn: Arc<dyn Fn() -> BotTaskFn + Send + Sync>,
     restarts: Arc<RwLock<u8>>,
     max_restarts: u8,
     current_join_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
@@ -51,15 +53,12 @@ pub struct BotTask {
 
 impl BotTask {
     pub fn new(
-        name: String,
-        task_fn: impl Fn() -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>
-            + Send
-            + Sync
-            + 'static,
+        name: impl Into<String>,
+        task_fn: impl Fn() -> BotTaskFn + Send + Sync + 'static,
         max_restarts: u8,
     ) -> Self {
         BotTask {
-            name,
+            name: name.into(),
             task_fn: Arc::new(task_fn),
             restarts: Arc::new(RwLock::new(0)),
             max_restarts,
@@ -96,20 +95,13 @@ impl std::fmt::Debug for BotTask {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TaskManager {
     exit_conditions: Arc<Notify>,
     tasks: Vec<BotTask>,
 }
 
 impl TaskManager {
-    pub fn new() -> Self {
-        TaskManager {
-            exit_conditions: Arc::new(Notify::new()),
-            tasks: Vec::new(),
-        }
-    }
-
     pub fn add_task(&mut self, task: BotTask) {
         self.tasks.push(task);
     }
@@ -121,15 +113,14 @@ impl TaskManager {
             let jh = tokio::spawn(async move {
                 loop {
                     println!(
-                        "{}\n{} {} task...\n{}",
-                        "#".repeat(100),
+                        "{separator:#<100}\n{} {} task...\n{separator:#<100}",
                         if *task_clone.restarts.read().await == 0 {
                             "Starting"
                         } else {
                             "Restarting"
                         },
                         &task_clone,
-                        "#".repeat(100)
+                        separator = ""
                     );
                     match (task_clone.task_fn)().await {
                         Ok(_) => {
@@ -170,24 +161,24 @@ pub struct Args {}
 #[tokio::main]
 async fn main() {
     let args = Args {};
-    let mut task_manager = TaskManager::new();
+    let mut task_manager = TaskManager::default();
 
     let twitch_task = BotTask::new(
-        "Twitch Client".into(),
+        "Twitch Client",
         move || Box::pin(twitch_client::start(args.clone())),
         5,
     );
 
-    let tts_task = BotTask::new("TTS".into(), move || Box::pin(tts::start(args.clone())), 5);
+    let tts_task = BotTask::new("TTS", move || Box::pin(tts::start(args.clone())), 5);
 
     let commands_task = BotTask::new(
-        "Commands".into(),
+        "Commands",
         move || Box::pin(commands::start(args.clone())),
-        2,
+        5,
     );
 
     let audio_player_task = BotTask::new(
-        "Audio Player".into(),
+        "Audio Player",
         move || Box::pin(audio_player::start(args.clone())),
         5,
     );

@@ -24,7 +24,7 @@ use crate::{
 
 pub static TTS_VOICE_DATABASE: LazyLock<TTSDatabase> = LazyLock::new(|| TTSDatabase::new());
 
-pub static TTS_MSG_QUEUE: LazyLock<MSGQueue<String>> = LazyLock::new(|| MSGQueue::new());
+pub static TTS_MSG_QUEUE: LazyLock<MSGQueue<String>> = LazyLock::new(|| MSGQueue::default());
 
 static TRANSFORM_CHARS: &[(char, &str)] = &[('&', "and"), ('%', "percent")];
 
@@ -92,7 +92,7 @@ impl TTSDatabase {
                 voice_config: voice,
             })
             .collect::<Vec<TTSVoice>>();
-        TTSDatabase {
+        Self {
             tts_configs: voices,
         }
     }
@@ -177,7 +177,7 @@ struct TTSVoices {
 
 impl TTSVoices {
     pub fn new() -> Self {
-        TTSVoices {
+        Self {
             voices: get_voices_list().unwrap(),
         }
     }
@@ -199,7 +199,7 @@ pub struct TTSVoiceTemplate {
 
 impl Default for TTSVoiceTemplate {
     fn default() -> Self {
-        TTSVoiceTemplate {
+        Self {
             locale: Some("it-IT".into()),
             gender: Some(TTSGender::Male),
             pitch: Some(-1),
@@ -217,7 +217,7 @@ pub async fn start(_args: Args) -> Result<()> {
     //
     BOT_COMMANDS
         .add_command(
-            "list_voices".into(),
+            "list_voices",
             Box::new(|irc_message| Box::pin(list_voices(irc_message))),
         )
         .await;
